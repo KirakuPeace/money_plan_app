@@ -5631,7 +5631,6 @@ with tab_save:
 # 大分類：試算表
 # ─────────────────────────────
 with tab_simulation:
-    st.header("マネープラン表")
 
     st.info("まずは、金融資産残高を毎年繰り越す形のマネープラン表を作成します。")
 
@@ -5889,7 +5888,7 @@ with tab_simulation:
     # 左上の「項目」を表示
     df_display.index.name = "西暦・あなたの年齢"
     
-    st.subheader("簡易試算表")
+    st.subheader("マネープラン表")
     st.dataframe(
     df_display,
     use_container_width=True,
