@@ -1,11 +1,9 @@
 import json
 import re
-from io import BytesIO
-from pathlib import Path
+from numbers import Number
 
 import pandas as pd
 import streamlit as st
-from openpyxl import load_workbook
 
 st.set_page_config(
     page_title="マネープラン",
@@ -13,8 +11,7 @@ st.set_page_config(
     layout="wide",
 )
 # =========================================================
-# Excelを使わない入力項目マスター
-# まずは基本情報だけでテストする
+# Python版の入力項目マスター
 # =========================================================
 INPUT_ITEMS = [
     {
@@ -44,7 +41,7 @@ INPUT_ITEMS = [
         "group": "",
         "key": "you_name",
         "label": "あなたの名前",
-        "value": "MASASHI",
+        "value": "TARO",
         "type": "text",
         "unit": "",
         "options": "",
@@ -84,9 +81,30 @@ INPUT_ITEMS = [
         "order": 4,
         "section": "基本情報",
         "group": "",
+        "key": "spouse_exists",
+        "label": "配偶者",
+        "value": "なし",
+        "type": "select",
+        "unit": "",
+        "options": "なし,あり",
+        "note": "",
+        "enabled_condition": "",
+        "default_from_key": "",
+        "default_offset": "",
+        "min_key": "",
+        "min_offset": "",
+        "max_key": "",
+        "max_offset": "",
+        "min_value": "",
+        "max_value": "",
+    },
+    {
+        "order": 4.5,
+        "section": "基本情報",
+        "group": "",
         "key": "spouse_name",
         "label": "配偶者の名前",
-        "value": "MOMO",
+        "value": "",
         "type": "text",
         "unit": "",
         "options": "",
@@ -107,7 +125,7 @@ INPUT_ITEMS = [
         "group": "",
         "key": "spouse_age",
         "label": "配偶者の年齢",
-        "value": 35,
+        "value": "",
         "type": "age",
         "unit": "歳",
         "options": "",
@@ -122,13 +140,34 @@ INPUT_ITEMS = [
         "min_value": "",
         "max_value": "",
     },
-        {
-        "order": 6,
-        "section": "子供情報",
+    {
+        "order": 6.1,
+        "section": "基本情報",
         "group": "",
-        "key": "child1_name",
-        "label": "第1子の名前",
-        "value": "NANA",
+        "key": "family_count",
+        "label": "家族人数",
+        "value": "0人",
+        "type": "select",
+        "unit": "",
+        "options": "0人,1人,2人,3人",
+        "note": "",
+        "enabled_condition": "",
+        "default_from_key": "",
+        "default_offset": "",
+        "min_key": "",
+        "min_offset": "",
+        "max_key": "",
+        "max_offset": "",
+        "min_value": "",
+        "max_value": "",
+    },
+    {
+        "order": 6,
+        "section": "基本情報",
+        "group": "",
+        "key": "family1_name",
+        "label": "家族①の名前",
+        "value": "",
         "type": "text",
         "unit": "",
         "options": "",
@@ -145,11 +184,11 @@ INPUT_ITEMS = [
     },
     {
         "order": 7,
-        "section": "子供情報",
+        "section": "基本情報",
         "group": "",
-        "key": "child1_age",
-        "label": "第1子の年齢",
-        "value": "7",
+        "key": "family1_age",
+        "label": "家族①の年齢",
+        "value": "",
         "type": "age",
         "unit": "歳",
         "options": "",
@@ -166,11 +205,11 @@ INPUT_ITEMS = [
     },
     {
         "order": 8,
-        "section": "子供情報",
+        "section": "基本情報",
         "group": "",
-        "key": "child2_name",
-        "label": "第2子の名前",
-        "value": "MIMI",
+        "key": "family2_name",
+        "label": "家族②の名前",
+        "value": "",
         "type": "text",
         "unit": "",
         "options": "",
@@ -187,11 +226,11 @@ INPUT_ITEMS = [
     },
     {
         "order": 9,
-        "section": "子供情報",
+        "section": "基本情報",
         "group": "",
-        "key": "child2_age",
-        "label": "第2子の年齢",
-        "value": "4",
+        "key": "family2_age",
+        "label": "家族②の年齢",
+        "value": "",
         "type": "age",
         "unit": "歳",
         "options": "",
@@ -208,10 +247,10 @@ INPUT_ITEMS = [
     },
     {
         "order": 10,
-        "section": "子供情報",
+        "section": "基本情報",
         "group": "",
-        "key": "child3_name",
-        "label": "第3子の名前",
+        "key": "family3_name",
+        "label": "家族③の名前",
         "value": "",
         "type": "text",
         "unit": "",
@@ -229,10 +268,10 @@ INPUT_ITEMS = [
     },
     {
         "order": 11,
-        "section": "子供情報",
+        "section": "基本情報",
         "group": "",
-        "key": "child3_age",
-        "label": "第3子の年齢",
+        "key": "family3_age",
+        "label": "家族③の年齢",
         "value": "",
         "type": "age",
         "unit": "歳",
@@ -248,7 +287,7 @@ INPUT_ITEMS = [
         "min_value": "",
         "max_value": "",
     },
-        {
+    {
         "order": 12,
         "section": "金融資産",
         "group": "",
@@ -275,7 +314,7 @@ INPUT_ITEMS = [
         "group": "",
         "key": "time_deposit",
         "label": "定期預金",
-        "value": 500,
+        "value": 200,
         "type": "money",
         "unit": "万円",
         "options": "",
@@ -317,7 +356,7 @@ INPUT_ITEMS = [
         "group": "",
         "key": "securities",
         "label": "有価証券",
-        "value": 500,
+        "value": 300,
         "type": "money",
         "unit": "万円",
         "options": "",
@@ -443,7 +482,7 @@ INPUT_ITEMS = [
         "group": "",
         "key": "car_loan",
         "label": "自動車ローン",
-        "value": 0,
+        "value": 30,
         "type": "money",
         "unit": "万円",
         "options": "",
@@ -464,7 +503,7 @@ INPUT_ITEMS = [
         "group": "",
         "key": "home_loan",
         "label": "住宅ローン",
-        "value": 3000,
+        "value": 2000,
         "type": "money",
         "unit": "万円",
         "options": "",
@@ -624,7 +663,7 @@ INPUT_ITEMS = [
         "max_key": "",
         "max_offset": "",
         "min_value": "",
-        "max_value": "",
+        "max_value": "100",
     },
     {
         "order": 30,
@@ -884,7 +923,7 @@ INPUT_ITEMS = [
         "group": "配偶者",
         "key": "spouse_salary_1_amount",
         "label": "年収",
-        "value": 400,
+        "value": 500,
         "type": "money",
         "unit": "万円",
         "options": "",
@@ -927,7 +966,7 @@ INPUT_ITEMS = [
         "group": "配偶者",
         "key": "spouse_salary_2_from_age",
         "label": "何歳から",
-        "value": "",
+        "value": "60",
         "type": "age",
         "unit": "歳",
         "options": "",
@@ -948,7 +987,7 @@ INPUT_ITEMS = [
         "group": "配偶者",
         "key": "spouse_salary_2_to_age",
         "label": "何歳まで",
-        "value": "",
+        "value": "64",
         "type": "age",
         "unit": "歳",
         "options": "",
@@ -969,7 +1008,7 @@ INPUT_ITEMS = [
         "group": "配偶者",
         "key": "spouse_salary_2_amount",
         "label": "年収",
-        "value": 0,
+        "value": 300,
         "type": "money",
         "unit": "万円",
         "options": "",
@@ -1386,6 +1425,66 @@ INPUT_ITEMS = [
         "max_value": "",
     },
     {
+        "order": 65.1,
+        "section": "確定拠出年金",
+        "group": "あなた",
+        "key": "you_dc_pension_principal",
+        "label": "年金原資額",
+        "value": "",
+        "type": "money",
+        "unit": "万円",
+    },
+    {
+        "order": 65.2,
+        "section": "確定拠出年金",
+        "group": "あなた",
+        "key": "you_dc_pension_start_age",
+        "label": "受給開始年齢",
+        "value": "",
+        "type": "age",
+        "unit": "歳",
+    },
+    {
+        "order": 65.3,
+        "section": "確定拠出年金",
+        "group": "あなた",
+        "key": "you_dc_pension_period",
+        "label": "受給期間",
+        "value": "",
+        "type": "years",
+        "unit": "年",
+    },
+    {
+        "order": 65.4,
+        "section": "確定拠出年金",
+        "group": "配偶者",
+        "key": "spouse_dc_pension_principal",
+        "label": "年金原資額",
+        "value": "",
+        "type": "money",
+        "unit": "万円",
+    },
+    {
+        "order": 65.5,
+        "section": "確定拠出年金",
+        "group": "配偶者",
+        "key": "spouse_dc_pension_start_age",
+        "label": "受給開始年齢",
+        "value": "",
+        "type": "age",
+        "unit": "歳",
+    },
+    {
+        "order": 65.6,
+        "section": "確定拠出年金",
+        "group": "配偶者",
+        "key": "spouse_dc_pension_period",
+        "label": "受給期間",
+        "value": "",
+        "type": "years",
+        "unit": "年",
+    },
+    {
         "order": 66,
         "section": "公的年金",
         "group": "あなた",
@@ -1563,7 +1662,7 @@ INPUT_ITEMS = [
         "type": "percentage",
         "unit": "％",
         "options": "",
-        "note": "公的年金・企業年金に対する概算控除率",
+        "note": "公的年金・企業年金・確定拠出年金に対する概算控除率",
         "enabled_condition": "",
         "default_from_key": "",
         "default_offset": "",
@@ -1663,7 +1762,7 @@ INPUT_ITEMS = [
         "section": "その他の収入",
         "group": "個人年金",
         "key": "you_personal_pension_start_age",
-        "label": "あなた・開始年齢",
+        "label": "①・開始年齢",
         "value": "",
         "type": "age",
         "unit": "歳",
@@ -1684,7 +1783,7 @@ INPUT_ITEMS = [
         "section": "その他の収入",
         "group": "個人年金",
         "key": "you_personal_pension_start_period",
-        "label": "あなた・受取期間",
+        "label": "①・受取期間",
         "value": "",
         "type": "years",
         "unit": "年",
@@ -1705,7 +1804,7 @@ INPUT_ITEMS = [
         "section": "その他の収入",
         "group": "個人年金",
         "key": "you_personal_pension_start_amount",
-        "label": "あなた・金額",
+        "label": "①・金額",
         "value": 0,
         "type": "money",
         "unit": "万円",
@@ -1726,7 +1825,7 @@ INPUT_ITEMS = [
         "section": "その他の収入",
         "group": "個人年金",
         "key": "spouse_personal_pension_start_age",
-        "label": "配偶者・開始年齢",
+        "label": "②・開始年齢",
         "value": "",
         "type": "age",
         "unit": "歳",
@@ -1747,7 +1846,7 @@ INPUT_ITEMS = [
         "section": "その他の収入",
         "group": "個人年金",
         "key": "spouse_personal_pension_start_period",
-        "label": "配偶者・受取期間",
+        "label": "②・受取期間",
         "value": "",
         "type": "years",
         "unit": "年",
@@ -1768,7 +1867,7 @@ INPUT_ITEMS = [
         "section": "その他の収入",
         "group": "個人年金",
         "key": "spouse_personal_pension_start_amount",
-        "label": "配偶者・金額",
+        "label": "②・金額",
         "value": 0,
         "type": "money",
         "unit": "万円",
@@ -3866,13 +3965,6 @@ INPUT_ITEMS = [
 ]
 
 # =========================================================
-# 基本設定
-# =========================================================
-INPUT_FILE = "mp.xlsx"
-SHEET_NAME = "入力データ"
-
-
-# =========================================================
 # 表示用フォーマット
 # =========================================================
 NUMERIC_TYPES = ("money", "age", "year", "years", "number", "percentage")
@@ -3911,26 +4003,21 @@ def fmt_display(value, ftype):
     return text
 
 
-# =========================================================
-# Excel保存用の値に戻す
-# =========================================================
-def to_excel_value(value, ftype):
-    """
-    画面上の「500万円」「65歳」「20％」などを、
-    Excel保存用に 500, 65, 20 のような数値に戻す
-    """
-    if value is None:
-        return None
+def fmt_plan_value(value):
+    """MP表の数値を3桁区切り・▲表記の整数に整える。"""
+    if value is None or pd.isna(value):
+        return ""
 
-    text = str(value).strip()
-    if text == "":
-        return None
+    if isinstance(value, Number) and not isinstance(value, bool):
+        number = int(round(float(value)))
 
-    if ftype in ("money", "age", "year", "years", "number", "percentage"):
-        digits = re.sub(r"\D", "", text)
-        return int(digits) if digits else None
+        if number < 0:
+            return f"▲{abs(number):,}"
 
-    return text
+        return f"{number:,}"
+
+    return value
+
 
 def get_number_by_key(rows, ref_key):
     """
@@ -3964,7 +4051,7 @@ def get_number_by_key(rows, ref_key):
         if digits != "":
             return int(digits)
 
-    # 最後に Excel 由来の rows を見る
+    # 最後に Python 内の入力項目マスターを見る
     for item in rows:
         if str(item.get("key") or "").strip() == ref_key:
             value = item.get("value")
@@ -3974,7 +4061,7 @@ def get_number_by_key(rows, ref_key):
     return None
 
 # =========================================================
-# no_excel版：現在の入力内容をJSON保存用データにする
+# 現在の入力内容をJSON保存用データにする
 # =========================================================
 def create_save_data(rows):
     """
@@ -4003,7 +4090,7 @@ def create_save_data(rows):
     return save_data
 
 # =========================================================
-# no_excel版：JSONから読み込んだ値を画面入力に反映する
+# JSONから読み込んだ値を画面入力に反映する
 # =========================================================
 def load_save_data_to_session(save_data):
     """
@@ -4101,6 +4188,24 @@ def apply_input_rules(value, item, rows):
 
     return number
 
+# =========================================================
+# 配偶者あり／なしを判定する
+# =========================================================
+def has_spouse(rows):
+    spouse_exists = get_text_by_key(rows, "spouse_exists")
+    return spouse_exists == "あり"
+
+# =========================================================
+# 家族人数を取得する
+# =========================================================
+def get_family_count(rows):
+    family_count_text = get_text_by_key(rows, "family_count")
+    family_count_digits = re.sub(r"\D", "", family_count_text)
+
+    if family_count_digits == "":
+        return 0
+
+    return int(family_count_digits)
 
 # =========================================================
 # 入力値が変わったときに単位付き表示へ整える
@@ -4121,62 +4226,6 @@ def on_change_format(widget_key, ftype, item=None, rows=None):
         key = widget_key.replace("input_", "", 1)
         value_key = f"value_{key}"
         st.session_state[value_key] = formatted_value
-
-
-# =========================================================
-# 入力データシートを読む
-# =========================================================
-def load_input_rows():
-    file_path = Path(INPUT_FILE)
-
-    if not file_path.exists():
-        st.error(f"{INPUT_FILE} が見つかりません。app_input_test.py と同じフォルダに置いてください。")
-        st.stop()
-
-    wb = load_workbook(INPUT_FILE)
-    if SHEET_NAME not in wb.sheetnames:
-        st.error(f"{SHEET_NAME} シートが見つかりません。")
-        st.stop()
-
-    ws = wb[SHEET_NAME]
-
-    # 1行目の見出しを取得
-    headers = []
-    for cell in ws[1]:
-        headers.append(cell.value)
-
-    # 見出し名 → 列番号
-    col_map = {}
-    for idx, name in enumerate(headers, start=1):
-        if name:
-            col_map[str(name).strip()] = idx
-
-    required_cols = ["order", "section", "key", "label", "value", "type"]
-    missing = [c for c in required_cols if c not in col_map]
-
-    if missing:
-        st.error(f"入力データシートに必要な列がありません: {missing}")
-        st.stop()
-
-    rows = []
-
-    for row_no in range(2, ws.max_row + 1):
-        item = {}
-
-        for col_name, col_no in col_map.items():
-            item[col_name] = ws.cell(row=row_no, column=col_no).value
-
-        # key が空の行は無視
-        if item.get("key") is None or str(item.get("key")).strip() == "":
-            continue
-
-        item["_row_no"] = row_no
-        rows.append(item)
-
-    # order順に並べる
-    rows.sort(key=lambda x: x.get("order") or 999999)
-
-    return rows, col_map
 
 
 # =========================================================
@@ -4656,6 +4705,38 @@ def get_company_pension_income(rows, prefix, age):
 
 
 # =========================================================
+# 確定拠出年金を年齢に応じて取得する
+# 最終年に端数を加え、受給総額を年金原資額と一致させる
+# =========================================================
+def get_dc_pension_income(rows, prefix, age):
+    principal = get_number_by_key(rows, f"{prefix}_dc_pension_principal")
+    start_age = get_number_by_key(rows, f"{prefix}_dc_pension_start_age")
+    period = get_number_by_key(rows, f"{prefix}_dc_pension_period")
+
+    if (
+        principal is None
+        or principal <= 0
+        or start_age is None
+        or period is None
+        or period <= 0
+    ):
+        return 0
+
+    receive_year = age - start_age
+
+    if receive_year < 0 or receive_year >= period:
+        return 0
+
+    annual_amount = principal // period
+    remainder = principal % period
+
+    if receive_year == period - 1:
+        return annual_amount + remainder
+
+    return annual_amount
+
+
+# =========================================================
 # 公的年金を年齢に応じて取得する
 # 基礎年金・厚生年金を別々に返す
 # =========================================================
@@ -4694,12 +4775,12 @@ def get_public_pension_income(rows, prefix, age):
 
 # =========================================================
 # 年金控除額を計算する
-# 公的年金＋企業年金に控除率を掛ける
+# 公的年金＋企業年金＋確定拠出年金に控除率を掛ける
 # =========================================================
 def calc_pension_deduction(pension_total, rate):
     """
     pension_total:
-      公的年金＋企業年金の合計額（万円）
+      公的年金＋企業年金＋確定拠出年金の合計額（万円）
 
     rate:
       控除率（％）
@@ -4894,6 +4975,23 @@ def get_one_time_expense(rows, base_key, age, periods):
 
     return total
 
+
+def get_one_time_expense_reasons(rows, base_key, age, periods):
+    """指定年齢に計上される一時支出の事由を取得する。"""
+    reasons = []
+
+    for i in range(1, periods + 1):
+        expense_age = get_number_by_key(rows, f"{base_key}{i}_age")
+        amount = get_number_by_key(rows, f"{base_key}{i}_amount")
+
+        if expense_age != age or amount is None or amount == 0:
+            continue
+
+        reason = get_text_by_key(rows, f"{base_key}{i}_name")
+        reasons.append(reason if reason else "事由未入力")
+
+    return reasons
+
 # =========================================================
 # 見出しの横に 表示/非表示 ボタンを置く
 # =========================================================
@@ -4967,30 +5065,56 @@ def init_session_state(rows):
 st.title("マネープラン入力シート")
 st.caption("下記のセルにあなたのデータを入力してください。入力不要な個所は、空欄としてください。")
 
-# Excelを使わず、Python内の INPUT_ITEMS から rows を作る
+# Python内の INPUT_ITEMS から rows を作る
 rows = INPUT_ITEMS
-col_map = {}
 
 init_session_state(rows)
 
 tab_current, tab_income, tab_expense, tab_simulation, tab_save = st.tabs(
-    ["現況", "収入", "支出", "MP表", "保存"]
+    ["現況", "収入", "支出", "MP表", "DATA"]
 )
 
 # =========================================================
-# no_excel版：JSONから入力データを読み込む
-# 入力欄を表示する前に session_state へ反映する
+# 入力データの保存・読込
 # =========================================================
 with tab_save:
-    st.subheader("保存・読込")
+    col_data, _, _, _, _ = st.columns([2, 1, 1, 1, 1])
 
-    st.info("保存済みのJSONファイルがある場合は、ここで読み込んでください。読み込み後、入力欄に反映されます。")
+    with col_data:
+        col_data_save, col_data_load = st.columns(2)
 
-    uploaded_json = st.file_uploader(
-        "保存済みJSONファイルを読み込む",
-        type=["json"],
-        key="json_uploader",
-    )
+        save_data = create_save_data(rows)
+        json_text = json.dumps(
+            save_data,
+            ensure_ascii=False,
+            indent=2,
+        )
+
+        with col_data_save:
+            st.download_button(
+                label="保存",
+                data=json_text,
+                file_name="money_plan_data.json",
+                mime="application/json",
+                width="stretch",
+            )
+
+        # 入力欄を表示する前に、JSONの値を session_state へ反映する
+        with col_data_load:
+            if st.button("読込", width="stretch"):
+                st.session_state["show_json_uploader"] = True
+
+    uploaded_json = None
+
+    if st.session_state.get("show_json_uploader", False):
+        _, col_data_uploader, _, _, _ = st.columns([1, 2, 1, 1, 1])
+
+        with col_data_uploader:
+            uploaded_json = st.file_uploader(
+                "保存データを選択",
+                type=["json"],
+                key="json_uploader",
+            )
 
     if uploaded_json is not None:
         try:
@@ -5001,11 +5125,11 @@ with tab_save:
                 load_save_data_to_session(save_data)
 
                 st.session_state["loaded_json_id"] = json_id
-                st.success("JSONファイルを読み込みました。画面に反映します。")
+                st.success("読み込みました。画面に反映します。")
                 st.rerun()
 
         except Exception as e:
-            st.error("JSONファイルの読み込みに失敗しました。")
+            st.error("読み込みに失敗しました。")
             st.write(e)
 
 # section の表示順を作る
@@ -5077,6 +5201,27 @@ st.markdown(
         font-weight: 700 !important;
         line-height: 1.2 !important;
     }
+    
+    /* スマホ・タブレットで余白を少し減らす */
+    @media screen and (max-width: 768px) {
+        .block-container {
+            padding-left: 0.6rem !important;
+            padding-right: 0.6rem !important;
+            padding-top: 0.8rem !important;
+        }
+
+        div[data-testid="stTabs"] [role="tab"] {
+            margin-right: 8px !important;
+            padding-left: 6px !important;
+            padding-right: 6px !important;
+        }
+
+        div[data-testid="stTabs"] [role="tab"] p {
+            font-size: 16px !important;
+            font-weight: 700 !important;
+        }
+    }
+
     </style>
     """,
     unsafe_allow_html=True,
@@ -5104,22 +5249,48 @@ with tab_current:
 
         render_row_by_keys(
             section_rows,
-            ["you_name", "you_age", "spouse_name", "spouse_age"],
+            ["you_name", "you_age", "spouse_exists"],
+            col_widths=[1, 1, 0.8, 1, 1, 3.2],
+            all_rows=rows,
+        )
+
+        spouse_exists = get_text_by_key(rows, "spouse_exists")
+
+        if spouse_exists == "あり":
+            render_row_by_keys(
+                section_rows,
+                ["spouse_name", "spouse_age"],
+                col_widths=[1.0, 1, 1, 1, 1.0, 3],
+                all_rows=rows,
+            )
+
+
+    # ─────────────────────────────
+    # 家族
+    # ─────────────────────────────
+    section_rows = get_section_rows(section_map, "基本情報")
+
+    if section_rows:
+        st.subheader("家族")
+
+        render_row_by_keys(
+            section_rows,
+            ["family_count"],
             col_widths=[1, 1, 1, 1, 1, 3],
             all_rows=rows,
         )
 
+        family_count_text = get_text_by_key(rows, "family_count")
+        family_count_digits = re.sub(r"\D", "", family_count_text)
 
-    # ─────────────────────────────
-    # 子供情報
-    # ─────────────────────────────
-    section_rows = get_section_rows(section_map, "子供情報")
-
-    if section_rows:
+        if family_count_digits == "":
+            family_count = 0
+        else:
+            family_count = int(family_count_digits)
 
         for key_list in make_period_key_rows(
-            "child",
-            periods=3,
+            "family",
+            periods=family_count,
             suffixes=["name", "age"],
         ):
             render_row_by_keys(
@@ -5220,22 +5391,23 @@ with tab_income:
             show_more=show_more,
         )
         
-        show_more = render_subheader_with_toggle(
-            "年収/配偶者",
-            toggle_key="show_spouse_salary",
-        )
+        if has_spouse(rows):
+            show_more = render_subheader_with_toggle(
+                "年収/配偶者",
+                toggle_key="show_spouse_salary",
+            )
 
-        render_rows_with_more(
-            section_rows,
-            make_period_key_rows(
-                "spouse_salary_",
-                periods=4,
-                suffixes=["from_age", "to_age", "amount", "takehome_rate"],
-            ),
-            col_widths=[1, 1, 1, 1, 1, 4],
-            all_rows=rows,
-            show_more=show_more,
-        )
+            render_rows_with_more(
+                section_rows,
+                make_period_key_rows(
+                    "spouse_salary_",
+                    periods=4,
+                    suffixes=["from_age", "to_age", "amount", "takehome_rate"],
+                ),
+                col_widths=[1, 1, 1, 1, 1, 4],
+                all_rows=rows,
+                show_more=show_more,
+            )
 
 
     # ─────────────────────────────
@@ -5262,21 +5434,57 @@ with tab_income:
             all_rows=rows,
         )      
 
-        st.markdown("配偶者")
+        if has_spouse(rows):
+            st.markdown("配偶者")
+
+            render_row_by_keys(
+                section_rows,
+                [
+                    "spouse_pension_kind",
+                    "spouse_service_years",
+                    "spouse_start_age",
+                    "spouse_period",
+                    "spouse_amount",
+                ],
+                col_widths=[1, 1, 1, 1, 1, 4],
+                all_rows=rows,
+            )
+
+    # ─────────────────────────────
+    # 確定拠出年金
+    # ─────────────────────────────
+    section_rows = get_section_rows(section_map, "確定拠出年金")
+
+    if section_rows:
+        st.divider()
+        st.subheader("確定拠出年金")
+
+        st.markdown("**あなた**")
 
         render_row_by_keys(
             section_rows,
             [
-                "spouse_pension_kind",
-                "spouse_service_years",
-                "spouse_start_age",
-                "spouse_period",
-                "spouse_amount",
+                "you_dc_pension_principal",
+                "you_dc_pension_start_age",
+                "you_dc_pension_period",
             ],
-            col_widths=[1, 1, 1, 1, 1, 4],
+            col_widths=[1.2, 1, 1, 1, 1, 4],
             all_rows=rows,
         )
 
+        if has_spouse(rows):
+            st.markdown("配偶者")
+
+            render_row_by_keys(
+                section_rows,
+                [
+                    "spouse_dc_pension_principal",
+                    "spouse_dc_pension_start_age",
+                    "spouse_dc_pension_period",
+                ],
+                col_widths=[1.2, 1, 1, 1, 1, 4],
+                all_rows=rows,
+            )
 
     # ─────────────────────────────
     # 公的年金
@@ -5301,19 +5509,20 @@ with tab_income:
             all_rows=rows,
         )
 
-        st.markdown("配偶者")
+        if has_spouse(rows):
+            st.markdown("配偶者")
 
-        render_row_by_keys(
-            section_rows,
-            [
-                "spouse_basic_pension",
-                "spouse_basic_pension_start_age",
-                "spouse_employee_pension",
-                "spouse_employee_pension_start_age",
-            ],
-            col_widths=[1.2, 0.8, 1.2, 0.8, 1, 4],
-            all_rows=rows,
-        )
+            render_row_by_keys(
+                section_rows,
+                [
+                    "spouse_basic_pension",
+                    "spouse_basic_pension_start_age",
+                    "spouse_employee_pension",
+                    "spouse_employee_pension_start_age",
+                ],
+                col_widths=[1.2, 0.8, 1.2, 0.8, 1, 4],
+                all_rows=rows,
+            )
 
         st.markdown("**控除率**")
 
@@ -5343,12 +5552,21 @@ with tab_income:
             [
                 "you_unemployment_insurance_age",
                 "you_unemployment_insurance_amount",
-                "spouse_unemployment_insurance_age",
-                "spouse_unemployment_insurance_amount",
             ],
-            col_widths=[1.2, 0.8, 1.2, 0.8, 1, 4],
+            col_widths=[1, 1, 1, 1, 1, 4],
             all_rows=rows,
         )
+
+        if has_spouse(rows):
+            render_row_by_keys(
+                section_rows,
+                [
+                    "spouse_unemployment_insurance_age",
+                    "spouse_unemployment_insurance_amount",
+                ],
+                col_widths=[1, 1, 1, 1, 1, 4],
+                all_rows=rows,
+            )
 
         st.markdown("**個人年金**")
 
@@ -5550,10 +5768,7 @@ with tab_expense:
     def get_section_rows(section_map, section_label):
         """
         section_map から、section_label で始まるセクションを探す。
-        例：
-          section_label = "教育費"
-          Excel側 section = "教育費キョウイクヒ"
-        でも拾えるようにする。
+        section名の末尾に補足文字があっても、前方一致で拾えるようにする。
         """
         # 完全一致を優先
         if section_label in section_map:
@@ -5566,78 +5781,27 @@ with tab_expense:
 
         return None
 
-
-    # =========================================================
-    # 保存してダウンロード
-    # =========================================================
-    # st.divider()
-    #
-    # if st.button("①入力データをエクセル化する"):
-    #     wb = load_workbook(INPUT_FILE)
-    #     ws = wb[SHEET_NAME]
-    #
-    #     value_col = col_map["value"]
-    #
-    #    for item in rows:
-    #        key = str(item["key"]).strip()
-    #        widget_key = f"input_{key}"
-    #
-    #        ftype = str(item.get("type") or "text").strip()
-    #        row_no = item["_row_no"]
-    #
-    #        screen_value = st.session_state.get(widget_key, "")
-    #        excel_value = to_excel_value(screen_value, ftype)
-    #
-    #        ws.cell(row=row_no, column=value_col).value = excel_value
-    #
-    #    output = BytesIO()
-    #    wb.save(output)
-    #    output.seek(0)
-    #
-    #    st.session_state["download_excel"] = output.getvalue()
-    #
-    #if "download_excel" in st.session_state:
-    #    st.download_button(
-    #        label="②Excelをダウンロード",
-    #       data=st.session_state["download_excel"],
-    #       file_name="mp_edited.xlsx",
-    #       mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    #    )
-    
-# =========================================================
-# no_excel版：入力データをJSONで保存
-# =========================================================
-with tab_save:
-    st.divider()
-
-    st.info("現在の入力内容をJSONファイルとして保存できます。")
-
-    save_data = create_save_data(rows)
-
-    json_text = json.dumps(
-        save_data,
-        ensure_ascii=False,
-        indent=2,
-    )
-
-    st.download_button(
-        label="入力データを保存（JSON）",
-        data=json_text,
-        file_name="money_plan_data.json",
-        mime="application/json",
-    )
-
 # ─────────────────────────────
-# 大分類：試算表
+# 大分類：マネープラン表
 # ─────────────────────────────
 with tab_simulation:
 
-    st.info("まずは、金融資産残高を毎年繰り越す形のマネープラン表を作成します。")
+    st.info("金融資産残高を毎年繰り越す形のマネープラン表を作成します。")
 
     # 基本情報
     basic_year = get_number_by_key(rows, "basic_year") or 2025
     you_age = get_number_by_key(rows, "you_age") or 65
-    spouse_age = get_number_by_key(rows, "spouse_age") or 65
+
+    spouse_exists = has_spouse(rows)
+    spouse_name = get_text_by_key(rows, "spouse_name")
+    spouse_age_row_label = spouse_name if spouse_name else "配偶者"
+
+    if spouse_exists:
+        spouse_age = get_number_by_key(rows, "spouse_age") or 65
+    else:
+        spouse_age = None
+
+    family_count = get_family_count(rows)
 
     # 退職一時金の入力チェック
     has_retirement_error = False
@@ -5648,11 +5812,12 @@ with tab_simulation:
         "あなた",
     ) or has_retirement_error
 
-    has_retirement_error = validate_retirement_lump_sum_input(
-        rows,
-        "spouse",
-        "配偶者",
-    ) or has_retirement_error
+    if spouse_exists:
+        has_retirement_error = validate_retirement_lump_sum_input(
+            rows,
+            "spouse",
+            "配偶者",
+        ) or has_retirement_error
 
     if has_retirement_error:
         st.stop()
@@ -5675,11 +5840,74 @@ with tab_simulation:
 
     for age in range(you_age, 101):
         year = basic_year + (age - you_age)
-        spouse_current_age = spouse_age + (age - you_age)
+        if spouse_exists:
+            spouse_current_age = spouse_age + (age - you_age)
+        else:
+            spouse_current_age = None
+
+            family_age_rows = {}
+
+            family_labels = ["①", "②", "③"]
+
+            for i in range(1, family_count + 1):
+                family_age = get_number_by_key(rows, f"family{i}_age")
+
+                if family_age is None:
+                    family_current_age = None
+                else:
+                    family_current_age = family_age + (age - you_age)
+
+                family_age_rows[f"家族{family_labels[i - 1]}の年齢"] = family_current_age
+
+        # 家族情報
+        family_rows = {}
+
+        family_labels = ["①", "②", "③"]
+
+        for i in range(1, family_count + 1):
+            family_name = get_text_by_key(rows, f"family{i}_name")
+            family_age = get_number_by_key(rows, f"family{i}_age")
+
+            if family_age is None:
+                family_current_age = None
+            else:
+                family_current_age = family_age + (age - you_age)
+
+            # 名前が入力されていれば、その名前をMP表の行名にする
+            # 名前が空欄なら、家族①・家族②・家族③を行名にする
+            if family_name == "":
+                family_label = f"家族{family_labels[i - 1]}"
+            else:
+                family_label = family_name
+
+            if family_current_age is None:
+                family_rows[family_label] = ""
+            else:
+                family_rows[family_label] = f"{family_current_age}歳"
+
 
         # 収入
-        you_salary_income = get_salary_income(rows, "you", age, periods=4)
-        spouse_salary_income = get_salary_income(rows, "spouse", spouse_current_age, periods=4)
+
+        # -----------------------------
+        # あなたの収入
+        # -----------------------------
+        you_salary_income = get_salary_income(
+            rows,
+            "you",
+            age,
+            periods=4,
+        )
+
+        (
+            you_retirement_lump_sum_gross,
+            you_retirement_lump_sum_tax,
+            you_retirement_lump_sum_net,
+            you_company_pension,
+        ) = get_company_pension_income(
+            rows,
+            "you",
+            age,
+        )
 
         you_basic_pension, you_employee_pension = get_public_pension_income(
             rows,
@@ -5687,58 +5915,83 @@ with tab_simulation:
             age,
         )
 
-        spouse_basic_pension, spouse_employee_pension = get_public_pension_income(
-            rows,
-            "spouse",
-            spouse_current_age,
-        )
-        you_retirement_lump_sum_gross, you_retirement_lump_sum_tax, you_retirement_lump_sum_net, you_company_pension = get_company_pension_income(
-            rows,
-            "you",
-            age,
-        )
-
-        spouse_retirement_lump_sum_gross, spouse_retirement_lump_sum_tax, spouse_retirement_lump_sum_net, spouse_company_pension = get_company_pension_income(
-            rows,
-            "spouse",
-            spouse_current_age,
-        )
-
-        # 年金控除率
-        public_pension_rate = get_number_by_key(rows, "public_pension_rate") or 0
-
-        # 控除対象となる年金収入
-        # 公的年金 ＋ 企業年金
-        pension_income_total = (
-            you_company_pension
-            + spouse_company_pension
-            + you_basic_pension
-            + you_employee_pension
-            + spouse_basic_pension
-            + spouse_employee_pension
-        )
-
-        # 年金控除額
-        pension_deduction = calc_pension_deduction(
-            pension_income_total,
-            public_pension_rate,
-        )
-
-        # 表示用はマイナスにする
-        pension_deduction_display = -pension_deduction
-
         you_unemployment_income = get_unemployment_insurance_income(
             rows,
             "you",
             age,
         )
 
-        spouse_unemployment_income = get_unemployment_insurance_income(
+        
+        # -----------------------------
+        # 配偶者の収入
+        # 配偶者なしの場合はすべて 0
+        # -----------------------------
+        if spouse_exists:
+            spouse_salary_income = get_salary_income(
+                rows,
+                "spouse",
+                spouse_current_age,
+                periods=4,
+            )
+
+            (
+                spouse_retirement_lump_sum_gross,
+                spouse_retirement_lump_sum_tax,
+                spouse_retirement_lump_sum_net,
+                spouse_company_pension,
+            ) = get_company_pension_income(
+                rows,
+                "spouse",
+                spouse_current_age,
+            )
+
+            spouse_basic_pension, spouse_employee_pension = get_public_pension_income(
+                rows,
+                "spouse",
+                spouse_current_age,
+            )
+
+            spouse_unemployment_income = get_unemployment_insurance_income(
+                rows,
+                "spouse",
+                spouse_current_age,
+            )
+            
+        else:
+            spouse_salary_income = 0
+
+            spouse_retirement_lump_sum_gross = 0
+            spouse_retirement_lump_sum_tax = 0
+            spouse_retirement_lump_sum_net = 0
+            spouse_company_pension = 0
+
+            spouse_basic_pension = 0
+            spouse_employee_pension = 0
+
+            spouse_unemployment_income = 0
+
+        # -----------------------------
+        # 確定拠出年金
+        # -----------------------------
+        you_dc_pension = get_dc_pension_income(
             rows,
-            "spouse",
-            spouse_current_age,
+            "you",
+            age,
         )
 
+        if spouse_exists:
+            spouse_dc_pension = get_dc_pension_income(
+                rows,
+                "spouse",
+                spouse_current_age,
+            )
+        else:
+            spouse_dc_pension = 0
+
+        # -----------------------------
+        # 個人年金
+        # 配偶者の有無に関係なく、個人年金①・②として計算する
+        # -----------------------------
         you_personal_pension = get_personal_pension_income(
             rows,
             "you",
@@ -5748,9 +6001,43 @@ with tab_simulation:
         spouse_personal_pension = get_personal_pension_income(
             rows,
             "spouse",
-            spouse_current_age,
+            age,
         )
 
+        personal_pension_total = (
+            you_personal_pension
+            + spouse_personal_pension
+        )
+
+        # -----------------------------
+        # 年金控除
+        # 公的年金 ＋ 企業年金 ＋ 確定拠出年金を対象にする
+        # -----------------------------
+        public_pension_rate = get_number_by_key(rows, "public_pension_rate") or 0
+
+        pension_income_total = (
+            you_company_pension
+            + spouse_company_pension
+            + you_dc_pension
+            + spouse_dc_pension
+            + you_basic_pension
+            + you_employee_pension
+            + spouse_basic_pension
+            + spouse_employee_pension
+        )
+
+        pension_deduction = calc_pension_deduction(
+            pension_income_total,
+            public_pension_rate,
+        )
+
+        # 表示用はマイナスにする
+        pension_deduction_display = -pension_deduction
+
+
+        # -----------------------------
+        # その他収入
+        # -----------------------------
         other_income = get_other_income(
             rows,
             age=age,
@@ -5766,14 +6053,15 @@ with tab_simulation:
             + spouse_retirement_lump_sum_net
             + you_company_pension
             + spouse_company_pension
+            + you_dc_pension
+            + spouse_dc_pension
             + you_basic_pension
             + you_employee_pension
             + spouse_basic_pension
             + spouse_employee_pension
             + you_unemployment_income
             + spouse_unemployment_income
-            + you_personal_pension
-            + spouse_personal_pension
+            + personal_pension_total
             + other_income
             - pension_deduction
         )
@@ -5838,39 +6126,103 @@ with tab_simulation:
         plan_rows.append({
             "年": year,
             "あなたの年齢": age,
-            "配偶者の年齢": spouse_current_age,
-            "あなたの給与（万円）": you_salary_income,
-            "配偶者の給与（万円）": spouse_salary_income,
-            "あなたの退職一時金（万円）": you_retirement_lump_sum_net,
-            "配偶者の退職一時金（万円）": spouse_retirement_lump_sum_net,
-            "あなたの企業年金（万円）": you_company_pension,
-            "配偶者の企業年金（万円）": spouse_company_pension,
-            "あなたの基礎年金（万円）": you_basic_pension,
-            "あなたの厚生年金（万円）": you_employee_pension,
-            "配偶者の基礎年金（万円）": spouse_basic_pension,
-            "配偶者の厚生年金（万円）": spouse_employee_pension,
-            "年金控除額（万円）": pension_deduction_display,
-            "あなたの雇用保険（万円）": you_unemployment_income,
-            "配偶者の雇用保険（万円）": spouse_unemployment_income,
-            "あなたの個人年金（万円）": you_personal_pension,
-            "配偶者の個人年金（万円）": spouse_personal_pension,
-            "その他収入（万円）": other_income,
-            "収入合計（万円）": income_total,
-            "基礎生活費（万円）": basic_living_cost,
-            "教育費（万円）": educational_cost,
-            "住居費（万円）": housing_cost,
-            "保険料（万円）": insurance_cost,
-            "その他の支出（万円）": other_expense,
-            "一時支出（万円）": one_time_expense,
-            "支出合計（万円）": expense_total,
-            "年間収支（万円）": annual_balance,
-            "金融資産残高（万円）": financial_assets,
+            spouse_age_row_label: (
+                f"{spouse_current_age}歳"
+                if spouse_current_age is not None
+                else ""
+            ),
+            **family_rows,
+            "あなたの給与": you_salary_income,
+            "配偶者の給与": spouse_salary_income,
+            "あなたの退職一時金": you_retirement_lump_sum_net,
+            "配偶者の退職一時金": spouse_retirement_lump_sum_net,
+            "あなたの企業年金": you_company_pension,
+            "配偶者の企業年金": spouse_company_pension,
+            "あなたの確定拠出年金": you_dc_pension,
+            "配偶者の確定拠出年金": spouse_dc_pension,
+            "あなたの基礎年金": you_basic_pension,
+            "あなたの厚生年金": you_employee_pension,
+            "配偶者の基礎年金": spouse_basic_pension,
+            "配偶者の厚生年金": spouse_employee_pension,
+            "年金控除額": pension_deduction_display,
+            "あなたの雇用保険": you_unemployment_income,
+            "配偶者の雇用保険": spouse_unemployment_income,
+            "個人年金": personal_pension_total,
+            "その他収入": other_income,
+            "収入合計": income_total,
+            "基礎生活費": basic_living_cost,
+            "教育費": educational_cost,
+            "住居費": housing_cost,
+            "保険料": insurance_cost,
+            "その他の支出": other_expense,
+            "一時支出": one_time_expense,
+            "支出合計": expense_total,
+            "年間収支": annual_balance,
+            "金融資産残高": financial_assets,
         })
 
     df_plan = pd.DataFrame(plan_rows)
 
     # 表示用に縦横を入れ替える
     df_display = df_plan.T
+
+    # 配偶者なしの場合は、MP表から配偶者関連の行を非表示にする
+    if not spouse_exists:
+        spouse_rows = [
+            idx for idx in df_display.index
+            if "配偶者" in str(idx) or str(idx) == spouse_age_row_label
+        ]
+
+        df_display = df_display.drop(
+            index=spouse_rows,
+            errors="ignore",
+        )
+
+    # 試算期間を通して金額がない収入・支出の明細行は表示しない
+    income_expense_detail_rows = [
+        "あなたの給与",
+        "配偶者の給与",
+        "あなたの退職一時金",
+        "配偶者の退職一時金",
+        "あなたの企業年金",
+        "配偶者の企業年金",
+        "あなたの確定拠出年金",
+        "配偶者の確定拠出年金",
+        "あなたの基礎年金",
+        "あなたの厚生年金",
+        "配偶者の基礎年金",
+        "配偶者の厚生年金",
+        "年金控除額",
+        "あなたの雇用保険",
+        "配偶者の雇用保険",
+        "個人年金",
+        "その他収入",
+        "基礎生活費",
+        "教育費",
+        "住居費",
+        "保険料",
+        "その他の支出",
+        "一時支出",
+    ]
+
+    empty_detail_rows = []
+
+    for row_name in income_expense_detail_rows:
+        if row_name not in df_display.index:
+            continue
+
+        row_values = pd.to_numeric(
+            df_display.loc[row_name],
+            errors="coerce",
+        ).fillna(0)
+
+        if not row_values.ne(0).any():
+            empty_detail_rows.append(row_name)
+
+    df_display = df_display.drop(
+        index=empty_detail_rows,
+        errors="ignore",
+    )
 
     # 横方向の列見出しに「西暦」と「あなたの年齢」を入れる
     df_display.columns = [
@@ -5885,14 +6237,80 @@ with tab_simulation:
         errors="ignore",
     )
 
+    # MP表の数値表示を、3桁区切り・▲表記の整数に統一する
+    df_display = df_display.apply(
+        lambda column: column.map(fmt_plan_value)
+    )
+
+    # 左端の項目名は左寄せのまま、データセルだけを右寄せにする
+    plan_column_config = {
+        column_name: st.column_config.TextColumn(
+            label=str(column_name),
+            alignment="right",
+        )
+        for column_name in df_display.columns
+    }
+
     # 左上の「項目」を表示
     df_display.index.name = "西暦・あなたの年齢"
     
-    st.subheader("マネープラン表")
-    st.dataframe(
-    df_display,
-    use_container_width=True,
-    )  
+    st.markdown(
+        """
+        <div style="display:flex; align-items:baseline; gap:0.4rem; margin-bottom:0.5rem;">
+            <span style="font-size:1.5rem; font-weight:600;">マネープラン表</span>
+            <span style="font-size:14px;">（金額単位：万円）</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    version_numbers = [int(n) for n in re.findall(r"\d+", st.__version__)[:3]]
+    version_numbers += [0] * (3 - len(version_numbers))
+    supports_cell_selection = tuple(version_numbers) >= (1, 49, 0)
+
+    if supports_cell_selection:
+        reason_message = st.empty()
+
+        plan_event = st.dataframe(
+            df_display,
+            width="stretch",
+            column_config=plan_column_config,
+            key="mp_plan_table",
+            on_select="rerun",
+            selection_mode="single-cell",
+        )
+
+        selected_cells = plan_event.selection.cells
+
+        if selected_cells:
+            row_position, column_name = selected_cells[0]
+            row_name = str(df_display.index[row_position])
+
+            if row_name == "一時支出":
+                column_position = df_display.columns.get_loc(column_name)
+                selected_age = int(df_plan.iloc[column_position]["あなたの年齢"])
+                reasons = get_one_time_expense_reasons(
+                    rows,
+                    base_key="primary_expense",
+                    age=selected_age,
+                    periods=10,
+                )
+
+                if reasons:
+                    reason_message.info(
+                        "一時支出の事由：" + "／".join(reasons)
+                    )
+            else:
+                reason_message.empty()
+    else:
+        st.dataframe(
+            df_display,
+            width="stretch",
+            column_config=plan_column_config,
+        )
+        st.info(
+            "一時支出の事由をセル選択で表示するには、"
+            "Streamlit 1.49.0以上への更新が必要です。"
+        )
 
 # =========================================================
 # 試算表の行ごとに背景色を付ける
@@ -5905,6 +6323,7 @@ def style_plan_rows(row):
         "給与",
         "退職一時金",
         "企業年金",
+        "確定拠出年金",
         "基礎年金",
         "厚生年金",
         "雇用保険",
