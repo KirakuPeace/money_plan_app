@@ -1,10 +1,14 @@
 import json
 import hmac
 import re
+from io import BytesIO
 from numbers import Number
 
 import pandas as pd
 import streamlit as st
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils import get_column_letter
 
 st.set_page_config(
     page_title="マネープラン",
@@ -4067,6 +4071,190 @@ def fmt_plan_value(value):
     return value
 
 
+def create_mp_excel(
+    df_plan,
+    visible_row_names,
+    initial_financial_assets,
+    income_detail_rows,
+    expense_detail_rows,
+):
+    """MP表を、主要集計行がExcel数式で再計算されるブックにする。"""
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "マネープラン表"
+    worksheet.sheet_view.showGridLines = False
+    worksheet.freeze_panes = "B4"
+
+    worksheet["A1"] = "マネープラン表"
+    worksheet["A1"].font = Font(size=16, bold=True)
+    worksheet["B1"] = "金額単位：万円"
+    worksheet["B1"].font = Font(size=10)
+
+    worksheet["A2"] = "初期金融資産"
+    worksheet["B2"] = initial_financial_assets
+    worksheet["B2"].font = Font(color="0000FF")
+    worksheet["B2"].number_format = '#,##0;[Red]"▲"#,##0;0'
+    worksheet["B2"].alignment = Alignment(horizontal="right")
+
+    header_row = 3
+    first_data_row = 4
+    worksheet.cell(header_row, 1, "西暦・あなたの年齢")
+
+    for column_index, plan_item in enumerate(
+        df_plan.to_dict("records"),
+        start=2,
+    ):
+        year = int(plan_item["年"])
+        age = int(plan_item["あなたの年齢"])
+        worksheet.cell(header_row, column_index, f"{year}年\n{age}歳")
+
+    header_fill = PatternFill("solid", fgColor="D9EAF7")
+    header_border = Border(
+        bottom=Side(style="medium", color="7F8C8D")
+    )
+
+    for cell in worksheet[header_row]:
+        cell.font = Font(bold=True)
+        cell.fill = header_fill
+        cell.border = header_border
+        cell.alignment = Alignment(
+            horizontal="center",
+            vertical="center",
+            wrap_text=True,
+        )
+
+    row_number_by_name = {
+        row_name: first_data_row + offset
+        for offset, row_name in enumerate(visible_row_names)
+    }
+
+    summary_rows = {
+        "収入合計",
+        "支出合計",
+        "年間収支",
+        "金融資産残高",
+    }
+    income_fill = PatternFill("solid", fgColor="FFF2CC")
+    expense_fill = PatternFill("solid", fgColor="DDEBF7")
+    summary_fill = PatternFill("solid", fgColor="E7E6E6")
+    total_border = Border(
+        top=Side(style="thin", color="7F8C8D")
+    )
+    number_format = '#,##0;[Red]"▲"#,##0;0'
+
+    for row_name in visible_row_names:
+        excel_row = row_number_by_name[row_name]
+        label_cell = worksheet.cell(excel_row, 1, row_name)
+        label_cell.alignment = Alignment(horizontal="left")
+
+        if row_name in summary_rows:
+            fill = summary_fill
+            label_cell.font = Font(bold=True)
+        elif row_name in income_detail_rows or row_name == "年金控除額":
+            fill = income_fill
+        elif row_name in expense_detail_rows:
+            fill = expense_fill
+        else:
+            fill = PatternFill(fill_type=None)
+
+        for column_index in range(1, len(df_plan) + 2):
+            worksheet.cell(excel_row, column_index).fill = fill
+
+        if row_name in summary_rows:
+            for column_index in range(1, len(df_plan) + 2):
+                worksheet.cell(excel_row, column_index).border = total_border
+
+    visible_income_rows = [
+        row_number_by_name[name]
+        for name in income_detail_rows
+        if name in row_number_by_name
+    ]
+    if "年金控除額" in row_number_by_name:
+        visible_income_rows.append(row_number_by_name["年金控除額"])
+
+    visible_expense_rows = [
+        row_number_by_name[name]
+        for name in expense_detail_rows
+        if name in row_number_by_name
+    ]
+
+    for plan_column, plan_item in enumerate(
+        df_plan.to_dict("records"),
+        start=2,
+    ):
+        excel_column = get_column_letter(plan_column)
+
+        for row_name in visible_row_names:
+            excel_row = row_number_by_name[row_name]
+            cell = worksheet.cell(excel_row, plan_column)
+
+            if row_name == "収入合計":
+                if visible_income_rows:
+                    references = ",".join(
+                        f"{excel_column}{row}" for row in visible_income_rows
+                    )
+                    cell.value = f"=SUM({references})"
+                else:
+                    cell.value = "=0"
+            elif row_name == "支出合計":
+                if visible_expense_rows:
+                    references = ",".join(
+                        f"{excel_column}{row}" for row in visible_expense_rows
+                    )
+                    cell.value = f"=SUM({references})"
+                else:
+                    cell.value = "=0"
+            elif row_name == "年間収支":
+                income_row = row_number_by_name["収入合計"]
+                expense_row = row_number_by_name["支出合計"]
+                cell.value = (
+                    f"={excel_column}{income_row}-{excel_column}{expense_row}"
+                )
+            elif row_name == "金融資産残高":
+                balance_row = row_number_by_name["金融資産残高"]
+                annual_balance_row = row_number_by_name["年間収支"]
+
+                if plan_column == 2:
+                    cell.value = f"=$B$2+{excel_column}{annual_balance_row}"
+                else:
+                    previous_column = get_column_letter(plan_column - 1)
+                    cell.value = (
+                        f"={previous_column}{balance_row}"
+                        f"+{excel_column}{annual_balance_row}"
+                    )
+            else:
+                value = plan_item.get(row_name, "")
+                cell.value = "" if value is None else value
+
+            if isinstance(cell.value, Number) or (
+                isinstance(cell.value, str) and cell.value.startswith("=")
+            ):
+                cell.number_format = number_format
+                cell.alignment = Alignment(horizontal="right")
+            else:
+                cell.alignment = Alignment(horizontal="right")
+
+    worksheet.column_dimensions["A"].width = 25
+    for column_index in range(2, len(df_plan) + 2):
+        worksheet.column_dimensions[get_column_letter(column_index)].width = 12
+
+    worksheet.row_dimensions[1].height = 24
+    worksheet.row_dimensions[3].height = 32
+    worksheet.auto_filter.ref = (
+        f"A{header_row}:{get_column_letter(len(df_plan) + 1)}"
+        f"{first_data_row + len(visible_row_names) - 1}"
+    )
+
+    workbook.calculation.calcMode = "auto"
+    workbook.calculation.fullCalcOnLoad = True
+    workbook.calculation.forceFullCalc = True
+
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    return output.getvalue()
+
+
 def get_number_by_key(rows, ref_key):
     """
     ref_key で指定された項目の現在値を数値で取得する。
@@ -6227,7 +6415,7 @@ with tab_simulation:
         )
 
     # 試算期間を通して金額がない収入・支出の明細行は表示しない
-    income_expense_detail_rows = [
+    income_detail_rows = [
         "あなたの給与",
         "配偶者の給与",
         "あなたの退職一時金",
@@ -6240,11 +6428,12 @@ with tab_simulation:
         "あなたの厚生年金",
         "配偶者の基礎年金",
         "配偶者の厚生年金",
-        "年金控除額",
         "あなたの雇用保険",
         "配偶者の雇用保険",
         "個人年金",
         "その他収入",
+    ]
+    expense_detail_rows = [
         "基礎生活費",
         "教育費",
         "住居費",
@@ -6252,6 +6441,11 @@ with tab_simulation:
         "その他の支出",
         "一時支出",
     ]
+    income_expense_detail_rows = (
+        income_detail_rows
+        + ["年金控除額"]
+        + expense_detail_rows
+    )
 
     empty_detail_rows = []
 
@@ -6359,6 +6553,24 @@ with tab_simulation:
             "一時支出の事由をセル選択で表示するには、"
             "Streamlit 1.49.0以上への更新が必要です。"
         )
+
+    mp_excel_data = create_mp_excel(
+        df_plan=df_plan,
+        visible_row_names=list(df_display.index),
+        initial_financial_assets=initial_financial_assets,
+        income_detail_rows=income_detail_rows,
+        expense_detail_rows=expense_detail_rows,
+    )
+    st.download_button(
+        "MP表をExcelでダウンロード",
+        data=mp_excel_data,
+        file_name="money_plan.xlsx",
+        mime=(
+            "application/vnd.openxmlformats-officedocument."
+            "spreadsheetml.sheet"
+        ),
+        width="content",
+    )
 
 # =========================================================
 # 試算表の行ごとに背景色を付ける
