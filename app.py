@@ -1,4 +1,5 @@
 import json
+import hmac
 import re
 from numbers import Number
 
@@ -10,6 +11,53 @@ st.set_page_config(
     page_icon="💰",
     layout="wide",
 )
+
+
+# =========================================================
+# パスワード認証
+# 実際のパスワードはStreamlit Community CloudのSecretsに保存する
+# =========================================================
+def require_password():
+    if st.session_state.get("password_authenticated", False):
+        return
+
+    _, login_column, _ = st.columns([1, 2, 1])
+
+    with login_column:
+        st.title("マネープラン")
+        st.write("利用するにはパスワードを入力してください。")
+
+        try:
+            expected_password = str(st.secrets["APP_PASSWORD"])
+        except (KeyError, FileNotFoundError):
+            st.error(
+                "パスワードが設定されていません。"
+                "StreamlitのSecretsにAPP_PASSWORDを登録してください。"
+            )
+            st.stop()
+
+        with st.form("password_form"):
+            entered_password = st.text_input(
+                "パスワード",
+                type="password",
+            )
+            submitted = st.form_submit_button(
+                "ログイン",
+                width="stretch",
+            )
+
+        if submitted:
+            if hmac.compare_digest(entered_password, expected_password):
+                st.session_state["password_authenticated"] = True
+                st.rerun()
+            else:
+                st.error("パスワードが違います。")
+
+    st.stop()
+
+
+require_password()
+
 # =========================================================
 # Python版の入力項目マスター
 # =========================================================
