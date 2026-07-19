@@ -4259,7 +4259,7 @@ def get_number_by_key(rows, ref_key):
     """
     ref_key で指定された項目の現在値を数値で取得する。
     - ref_key が 100 のような数値なら、そのまま 100 として返す
-    - それ以外は value_ → input_ → rows の順に key を探す
+    - それ以外は input_ → value_ → rows の順に key を探す
     """
     if ref_key is None or str(ref_key).strip() == "":
         return None
@@ -4273,19 +4273,17 @@ def get_number_by_key(rows, ref_key):
     value_key = f"value_{ref_key}"
     widget_key = f"input_{ref_key}"
    
-    # まず保存用 session_state を見る
-    if value_key in st.session_state:
-        value = st.session_state.get(value_key)
-        digits = re.sub(r"\D", "", str(value or ""))
-        if digits != "":
-            return int(digits)
-
-    # 次に画面上の入力値を見る
+    # 画面上の最新入力値を最優先する
     if widget_key in st.session_state:
         value = st.session_state.get(widget_key)
         digits = re.sub(r"\D", "", str(value or ""))
-        if digits != "":
-            return int(digits)
+        return int(digits) if digits else None
+
+    # 入力欄が非表示のときは保存用の値を見る
+    if value_key in st.session_state:
+        value = st.session_state.get(value_key)
+        digits = re.sub(r"\D", "", str(value or ""))
+        return int(digits) if digits else None
 
     # 最後に Python 内の入力項目マスターを見る
     for item in rows:
@@ -4314,10 +4312,10 @@ def create_save_data(rows):
         value_key = f"value_{key}"
         widget_key = f"input_{key}"
 
-        if value_key in st.session_state:
-            value = st.session_state.get(value_key)
-        elif widget_key in st.session_state:
+        if widget_key in st.session_state:
             value = st.session_state.get(widget_key)
+        elif value_key in st.session_state:
+            value = st.session_state.get(value_key)
         else:
             value = item.get("value")
 
@@ -4355,7 +4353,7 @@ def load_save_data_to_session(save_data):
 def get_text_by_key(rows, ref_key):
     """
     ref_key で指定された項目の現在値を文字列で取得する。
-    value_ → input_ → rows の順に探す。
+    input_ → value_ → rows の順に探す。
     """
     if ref_key is None or str(ref_key).strip() == "":
         return ""
@@ -4365,11 +4363,11 @@ def get_text_by_key(rows, ref_key):
     widget_key = f"input_{ref_key}"
     value_key = f"value_{ref_key}"
 
-    if value_key in st.session_state:
-        return str(st.session_state.get(value_key) or "").strip()
-
     if widget_key in st.session_state:
         return str(st.session_state.get(widget_key) or "").strip()
+
+    if value_key in st.session_state:
+        return str(st.session_state.get(value_key) or "").strip()
 
     for item in rows:
         if str(item.get("key") or "").strip() == ref_key:
@@ -4527,9 +4525,10 @@ def render_input_item(item, rows):
     if note is not None and str(note).strip() != "":
         help_text = str(note)
 
-    # 画面から消えていた入力欄を再表示するとき、
-    # 保存用 value_... があれば、それを input_... に戻す
-    if value_key in st.session_state:
+    # 画面から消えていた入力欄を再表示するときだけ、
+    # 保存用 value_... を input_... に戻す。
+    # 表示中の input_... は最新の画面入力なので上書きしない。
+    if widget_key not in st.session_state and value_key in st.session_state:
         st.session_state[widget_key] = st.session_state[value_key]
 
     # 選択式
