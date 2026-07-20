@@ -1,5 +1,6 @@
 import json
 import hmac
+import hashlib
 import re
 from io import BytesIO
 from numbers import Number
@@ -9,6 +10,8 @@ import streamlit as st
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
+
+APP_VERSION = "2026.07.20-MP表色調修正版"
 
 st.set_page_config(
     page_title="マネープラン",
@@ -22,23 +25,37 @@ st.set_page_config(
 # 実際のパスワードはStreamlit Community CloudのSecretsに保存する
 # =========================================================
 def require_password():
-    if st.session_state.get("password_authenticated", False):
+    try:
+        expected_password = str(st.secrets["APP_PASSWORD"])
+    except (KeyError, FileNotFoundError):
+        st.title("マネープラン")
+        st.error(
+            "パスワードが設定されていません。"
+            "StreamlitのSecretsにAPP_PASSWORDを登録してください。"
+        )
+        st.stop()
+
+    # Secretsのパスワードが変更された場合は、以前のログイン状態を
+    # 引き継がず、新しいパスワードでの再ログインを求める。
+    password_version = hashlib.sha256(
+        expected_password.encode("utf-8")
+    ).hexdigest()
+
+    if (
+        st.session_state.get("password_authenticated", False)
+        and st.session_state.get("authenticated_password_version")
+        == password_version
+    ):
         return
+
+    st.session_state["password_authenticated"] = False
+    st.session_state.pop("authenticated_password_version", None)
 
     _, login_column, _ = st.columns([1, 2, 1])
 
     with login_column:
         st.title("マネープラン")
         st.write("利用するにはパスワードを入力してください。")
-
-        try:
-            expected_password = str(st.secrets["APP_PASSWORD"])
-        except (KeyError, FileNotFoundError):
-            st.error(
-                "パスワードが設定されていません。"
-                "StreamlitのSecretsにAPP_PASSWORDを登録してください。"
-            )
-            st.stop()
 
         with st.form("password_form"):
             entered_password = st.text_input(
@@ -53,6 +70,9 @@ def require_password():
         if submitted:
             if hmac.compare_digest(entered_password, expected_password):
                 st.session_state["password_authenticated"] = True
+                st.session_state["authenticated_password_version"] = (
+                    password_version
+                )
                 st.rerun()
             else:
                 st.error("パスワードが違います。")
@@ -4071,6 +4091,49 @@ def fmt_plan_value(value):
     return value
 
 
+def style_plan_rows(row):
+    """Excel版MP表と同じ色調で、画面上の行を塗り分ける。"""
+    item_name = str(row.name)
+
+    summary_rows = {
+        "収入合計",
+        "支出合計",
+        "年間収支",
+        "金融資産残高",
+    }
+    income_keywords = [
+        "給与",
+        "退職一時金",
+        "企業年金",
+        "確定拠出年金",
+        "基礎年金",
+        "厚生年金",
+        "年金控除額",
+        "雇用保険",
+        "個人年金",
+        "その他収入",
+    ]
+    expense_rows = {
+        "基礎生活費",
+        "教育費",
+        "住居費",
+        "保険料",
+        "その他の支出",
+        "一時支出",
+    }
+
+    if item_name in summary_rows:
+        style = "background-color: #e7e6e6; font-weight: bold"
+    elif any(keyword in item_name for keyword in income_keywords):
+        style = "background-color: #fff2cc"
+    elif item_name in expense_rows:
+        style = "background-color: #ddebf7"
+    else:
+        style = ""
+
+    return [style] * len(row)
+
+
 def create_mp_excel(
     df_plan,
     visible_row_names,
@@ -4549,6 +4612,7 @@ def render_input_item(item, rows):
             label,
             option_list,
             key=widget_key,
+            persist_state="session",
             disabled=disabled,
             help=help_text,
             on_change=on_change_format,
@@ -4562,6 +4626,7 @@ def render_input_item(item, rows):
         st.text_input(
             label,
             key=widget_key,
+            persist_state="session",
             placeholder=placeholder,
             disabled=disabled,
             help=help_text,
@@ -4574,6 +4639,7 @@ def render_input_item(item, rows):
         st.text_input(
             label,
             key=widget_key,
+            persist_state="session",
             disabled=disabled,
             help=help_text,
             on_change=on_change_format,
@@ -5251,11 +5317,33 @@ def render_subheader_with_toggle(title, toggle_key):
 
     with button_col:
         st.write("")  # 高さ調整
-        if st.button(button_label, key=toggle_key + "_button"):
-            st.session_state[toggle_key] = not st.session_state[toggle_key]
-            st.rerun()
+        st.button(
+            button_label,
+            key=toggle_key + "_button",
+            on_click=toggle_input_section,
+            args=(toggle_key,),
+        )
 
     return st.session_state[toggle_key]
+
+
+def preserve_current_input_values():
+    """表示中の全入力値を、非表示になっても残る保存用キーへ退避する。"""
+    for state_key in list(st.session_state.keys()):
+        if not str(state_key).startswith("input_"):
+            continue
+
+        item_key = str(state_key).replace("input_", "", 1)
+        st.session_state[f"value_{item_key}"] = st.session_state[state_key]
+
+
+def toggle_input_section(toggle_key):
+    """最新入力を保存してから、入力欄の表示・非表示を切り替える。"""
+    preserve_current_input_values()
+    st.session_state[toggle_key] = not st.session_state.get(
+        toggle_key,
+        False,
+    )
 
 
 # =========================================================
@@ -5265,6 +5353,7 @@ def init_session_state(rows):
     for item in rows:
         key = str(item["key"]).strip()
         widget_key = f"input_{key}"
+        value_key = f"value_{key}"
 
         ftype = str(item.get("type") or "text").strip()
         value = item.get("value")
@@ -5285,20 +5374,29 @@ def init_session_state(rows):
 
         display_value = fmt_display(value, ftype)
 
-        if widget_key not in st.session_state:
-            st.session_state[widget_key] = display_value
-
-        value_key = f"value_{key}"
-
+        # 保存用の値がまだない初回だけ、Python内の初期値を使う。
         if value_key not in st.session_state:
             st.session_state[value_key] = display_value
+
+        # 「数値を入力してすぐ閉じる」の場合も消えないよう、
+        # 表示中の入力値を毎回、保存用の値へ同期する。
+        if widget_key in st.session_state:
+            st.session_state[value_key] = st.session_state[widget_key]
+        else:
+            # 表示切替などでStreamlitがウィジェット側の状態を整理しても、
+            # 初期値へ戻さず、保存してある最新値から復元する。
+            st.session_state[widget_key] = st.session_state[value_key]
 
 
 # =========================================================
 # メイン画面
 # =========================================================
 st.title("マネープラン入力シート")
-st.caption("下記のセルにあなたのデータを入力してください。入力不要な個所は、空欄としてください。")
+st.caption(
+    "下記のセルにあなたのデータを入力してください。"
+    "入力不要な個所は、空欄としてください。"
+    f"　｜　{APP_VERSION}"
+)
 
 # Python内の INPUT_ITEMS から rows を作る
 rows = INPUT_ITEMS
@@ -6494,6 +6592,12 @@ with tab_simulation:
 
     # 左上の「項目」を表示
     df_display.index.name = "西暦・あなたの年齢"
+
+    # Excel版と同じ色調を、StreamlitのMP表にも適用する
+    df_display_styled = df_display.style.apply(
+        style_plan_rows,
+        axis=1,
+    )
     
     st.markdown(
         """
@@ -6512,7 +6616,7 @@ with tab_simulation:
         reason_message = st.empty()
 
         plan_event = st.dataframe(
-            df_display,
+            df_display_styled,
             width="stretch",
             column_config=plan_column_config,
             key="mp_plan_table",
@@ -6544,7 +6648,7 @@ with tab_simulation:
                 reason_message.empty()
     else:
         st.dataframe(
-            df_display,
+            df_display_styled,
             width="stretch",
             column_config=plan_column_config,
         )
@@ -6571,61 +6675,3 @@ with tab_simulation:
         width="content",
     )
 
-# =========================================================
-# 試算表の行ごとに背景色を付ける
-# =========================================================
-def style_plan_rows(row):
-    item_name = str(row.name)
-
-    # 収入系：薄い暖色
-    income_keywords = [
-        "給与",
-        "退職一時金",
-        "企業年金",
-        "確定拠出年金",
-        "基礎年金",
-        "厚生年金",
-        "雇用保険",
-        "個人年金",
-        "その他収入",
-        "収入合計",
-    ]
-
-    # 支出系：薄い寒色
-    expense_keywords = [
-        "基礎生活費",
-        "教育費",
-        "住居費",
-        "保険料",
-        "その他の支出",
-        "一時支出",
-        "支出合計",
-    ]
-
-    # 集計系：薄いグレー
-    summary_keywords = [
-        "年間収支",
-        "金融資産残高",
-    ]
-
-    # 控除系：薄い黄色
-    deduction_keywords = [
-        "控除",
-        "税額",
-    ]
-
-    if any(keyword in item_name for keyword in income_keywords):
-        return ["background-color: #fff2cc"] * len(row)
-
-    if any(keyword in item_name for keyword in expense_keywords):
-        return ["background-color: #ddebf7"] * len(row)
-
-    if any(keyword in item_name for keyword in deduction_keywords):
-        return ["background-color: #fce4d6"] * len(row)
-
-    if any(keyword in item_name for keyword in summary_keywords):
-        return ["background-color: #e7e6e6; font-weight: bold"] * len(row)
-
-    return [""] * len(row)
-
-    
